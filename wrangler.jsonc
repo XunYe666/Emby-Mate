@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "emby-mate",
+  "main": "dist/worker.js",
+  "compatibility_date": "2026-03-20",
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "ENI_KV",
+      "id": "3b3c6fe27ddc42b2a8d20bb2d8931671"
+    }
+  ],
+  "placement": {
+    "mode": "off"
+  }
+}
