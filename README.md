@@ -10,7 +10,7 @@
 - 正式构建入口：`dist/worker.js`
 - 默认 KV 绑定名：`ENI_KV`
 - 部署配置：`wrangler.jsonc`
-- GitHub 版本对比固定以仓库内 `dist/worker.js` 为准
+- GitHub 版本对比固定读取仓库内 `version.json`
 
 ## 快速入口
 
@@ -21,7 +21,7 @@
 ## v2.4.10 发布重点
 
 - 右上角菜单新增版本入口：默认显示当前版本，点击直接跳转 GitHub 仓库主页。
-- Worker 新增版本常量与定时版本比对，固定按仓库内 `dist/worker.js` 做每日版本检查。
+- Worker 新增版本常量、`version.json` 清单与定时版本比对，固定按仓库内 `version.json` 做每日版本检查。
 - 站点高级设置新增“真实客户端 IP 透传”三态模式：`默认透传 / 仅X-Real-IP / 关闭透传`。
 - GitHub 仓库发布口径统一到 `dist/worker.js`，根目录 `worker-vx.x.x.js` 不再提交。
 
@@ -64,7 +64,7 @@
   - `wrangler.jsonc` 默认入口
   - 适合 Cloudflare Dashboard 粘贴部署、工程化构建、测试和 CLI 部署
 
-GitHub 仓库版本对比、发布目录和后续 CI/CD 都固定以 `dist/worker.js` 为准。根目录 `worker-vx.x.x.js` 仅保留本地可选快照用途，不再提交到 GitHub。
+GitHub 仓库版本对比固定读取 `version.json`；发布目录与后续 CI/CD 继续以 `dist/worker.js` 为正式部署产物。根目录 `worker-vx.x.x.js` 仅保留本地可选快照用途，不再提交到 GitHub。
 
 ---
 
@@ -72,7 +72,7 @@ GitHub 仓库版本对比、发布目录和后续 CI/CD 都固定以 `dist/worke
 
 Emby Mate fork 自 [axuitomo/CF-EMBY-PROXY-UI](https://github.com/axuitomo/CF-EMBY-PROXY-UI)，并在此基础上持续迭代。
 
-当前 GitHub 仓库的版本比较与发布口径统一以 `dist/worker.js` 为准。
+当前 GitHub 仓库的版本比较与发布口径已经拆分为：版本信息读取 `version.json`，部署产物使用 `dist/worker.js`。
 
 ---
 
@@ -224,21 +224,22 @@ npx wrangler deploy
 - KV 绑定名是 `ENI_KV`
 - 当前仓库已包含 `dist/worker.js`，不需要额外构建源码
 
-### GitHub 发布基准（4 个关键文件）
+### GitHub 发布基准（5 个关键文件）
 
-GitHub 对外发布与一键部署，至少需要保留下列 4 个关键文件：
+GitHub 对外发布与一键部署，至少需要保留下列 5 个关键文件：
 
 - `README.md`
 - `CHANGELOG.md`
 - `wrangler.jsonc`
 - `dist/worker.js`
+- `version.json`
 
 ### 一键部署仓库建议
 
 如果你希望别人通过 Cloudflare 的 **Deploy to Cloudflare** 按钮一键部署：
 
 1. 直接使用当前这个发布仓库，或 fork 一份同样结构的仓库。
-2. 确保仓库根目录保留这 4 个关键文件，并让 `wrangler.jsonc` 的 `main` 指向 `dist/worker.js`。
+2. 确保仓库根目录保留这 5 个关键文件，并让 `wrangler.jsonc` 的 `main` 指向 `dist/worker.js`。
 3. 使用下面这个 Cloudflare 官方一键部署链接：
 
 ```text
