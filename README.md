@@ -21,7 +21,7 @@
 ## v2.4.10 发布重点
 
 - 右上角菜单新增版本入口：默认显示当前版本，点击直接跳转 GitHub 仓库主页。
-- Worker 新增版本常量、`version.json` 清单与定时版本比对，固定按仓库内 `version.json` 做每日版本检查。
+- Worker 新增版本常量、`version.json` 清单与懒检查版本比对，后台读取版本信息时会按仓库内 `version.json` 进行过期刷新。
 - 站点高级设置新增“真实客户端 IP 透传”三态模式：`默认透传 / 仅X-Real-IP / 关闭透传`。
 - GitHub 仓库发布口径统一到 `dist/worker.js`，根目录 `worker-vx.x.x.js` 不再提交。
 
@@ -64,7 +64,7 @@
   - `wrangler.jsonc` 默认入口
   - 适合 Cloudflare Dashboard 粘贴部署、工程化构建、测试和 CLI 部署
 
-GitHub 仓库版本对比固定读取 `version.json`；发布目录与后续 CI/CD 继续以 `dist/worker.js` 为正式部署产物。根目录 `worker-vx.x.x.js` 仅保留本地可选快照用途，不再提交到 GitHub。
+GitHub 仓库版本对比固定读取 `version.json`；后台版本信息采用懒检查策略，过期后在读取时自动刷新。发布目录与后续 CI/CD 继续以 `dist/worker.js` 为正式部署产物。根目录 `worker-vx.x.x.js` 仅保留本地可选快照用途，不再提交到 GitHub。
 
 ---
 

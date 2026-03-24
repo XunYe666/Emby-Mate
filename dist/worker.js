@@ -628,7 +628,7 @@ function normalizeVersionStatusRecord(record = {}) {
     error: String(record.error || "").trim()
   };
 }
-var WORKER_VERSION, GITHUB_REPOSITORY_URL, GITHUB_REPOSITORY_BRANCH, GITHUB_REPOSITORY_VERSION_PATH, GITHUB_REPOSITORY_WORKER_PATH, WORKER_VERSION_MARKER, VERSION_STATUS_STORAGE_KEY, VERSION_PATTERN;
+var WORKER_VERSION, GITHUB_REPOSITORY_URL, GITHUB_REPOSITORY_BRANCH, GITHUB_REPOSITORY_VERSION_PATH, GITHUB_REPOSITORY_WORKER_PATH, VERSION_STATUS_LAZY_TTL_MS, VERSION_STATUS_ERROR_RETRY_MS, WORKER_VERSION_MARKER, VERSION_STATUS_STORAGE_KEY, VERSION_PATTERN;
 var init_version = __esm({
   "src/app/version.js"() {
     WORKER_VERSION = "2.4.10";
@@ -636,6 +636,8 @@ var init_version = __esm({
     GITHUB_REPOSITORY_BRANCH = "main";
     GITHUB_REPOSITORY_VERSION_PATH = "version.json";
     GITHUB_REPOSITORY_WORKER_PATH = "dist/worker.js";
+    VERSION_STATUS_LAZY_TTL_MS = 24 * 60 * 60 * 1e3;
+    VERSION_STATUS_ERROR_RETRY_MS = 60 * 60 * 1e3;
     WORKER_VERSION_MARKER = `EMBY_MATE_VERSION=${WORKER_VERSION}`;
     VERSION_STATUS_STORAGE_KEY = "sys:version-status";
     VERSION_PATTERN = /^\d+(?:\.\d+){0,3}$/;
@@ -6536,6 +6538,9 @@ var CFAnalytics = {
   }
 };
 
+// src/integrations/version-check.js
+init_version();
+
 // src/storage/version-status-repository.js
 init_auth();
 init_version();
@@ -6549,6 +6554,83 @@ async function writeStoredVersionStatus(env, record = {}) {
   const kv = Auth.getKV(env);
   await kv?.put(VERSION_STATUS_STORAGE_KEY, JSON.stringify(normalizedRecord));
   return normalizedRecord;
+}
+
+// src/integrations/version-check.js
+async function fetchRemoteWorkerVersion(fetchImpl = fetch) {
+  const rawUrl = buildGitHubRepositoryRawUrl(
+    GITHUB_REPOSITORY_VERSION_PATH,
+    GITHUB_REPOSITORY_URL,
+    GITHUB_REPOSITORY_BRANCH
+  );
+  if (!rawUrl) {
+    throw new Error("仓库地址配置无效");
+  }
+  const response = await fetchImpl(rawUrl, {
+    method: "GET",
+    headers: {
+      Accept: "application/javascript, text/plain;q=0.9, */*;q=0.1",
+      "Cache-Control": "no-cache"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub 返回异常状态 ${response.status}`);
+  }
+  const manifest = normalizeVersionManifestRecord(await response.json());
+  const remoteVersion = manifest.version;
+  if (!remoteVersion) {
+    throw new Error("未能解析仓库 version.json 版本");
+  }
+  return {
+    remoteVersion,
+    rawUrl
+  };
+}
+async function compareRepositoryWorkerVersion({
+  fetchImpl = fetch,
+  now = /* @__PURE__ */ new Date()
+} = {}) {
+  const checkedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  try {
+    const { remoteVersion } = await fetchRemoteWorkerVersion(fetchImpl);
+    const comparison = compareVersions(WORKER_VERSION, remoteVersion);
+    return normalizeVersionStatusRecord({
+      currentVersion: WORKER_VERSION,
+      remoteVersion,
+      status: comparison < 0 ? "update-available" : "equal",
+      checkedAt,
+      error: ""
+    });
+  } catch (error) {
+    return normalizeVersionStatusRecord({
+      currentVersion: WORKER_VERSION,
+      remoteVersion: "",
+      status: "error",
+      checkedAt,
+      error: error?.message || "版本检查失败"
+    });
+  }
+}
+function shouldRefreshStoredVersionStatus(record = {}, options = {}) {
+  const now = options.now instanceof Date ? options.now.getTime() : Date.parse(String(options.now || ""));
+  const normalizedRecord = normalizeVersionStatusRecord(record);
+  const checkedAt = Date.parse(String(normalizedRecord.checkedAt || ""));
+  if (!normalizedRecord.checkedAt || normalizedRecord.status === "unknown") return true;
+  if (!Number.isFinite(now) || !Number.isFinite(checkedAt)) return true;
+  const maxAgeMs = normalizedRecord.status === "error" ? VERSION_STATUS_ERROR_RETRY_MS : VERSION_STATUS_LAZY_TTL_MS;
+  return now - checkedAt >= maxAgeMs;
+}
+async function runVersionCheck(env, options = {}) {
+  const result = await compareRepositoryWorkerVersion(options);
+  await writeStoredVersionStatus(env, result);
+  return result;
+}
+async function readLazyVersionStatus(env, options = {}) {
+  const stored = await readStoredVersionStatus(env);
+  if (options.force !== true && !shouldRefreshStoredVersionStatus(stored, options)) {
+    return stored;
+  }
+  return runVersionCheck(env, options);
 }
 
 // src/proxy/media/response-size.js
@@ -10189,7 +10271,7 @@ async function handleAdminApiAction(data, { request, env }) {
       }
       return jsonResponse2({ success: true });
     case "versionStatus":
-      return jsonResponse2(await readStoredVersionStatus(env));
+      return jsonResponse2(await readLazyVersionStatus(env, { now: /* @__PURE__ */ new Date() }));
     case "tcping": {
       if (typeof data.name === "string" && data.name.trim()) {
         const runtimeConfig = await readRuntimeConfig(env);
@@ -10394,68 +10476,6 @@ function handleClientRttProbe() {
   });
 }
 
-// src/integrations/version-check.js
-init_version();
-async function fetchRemoteWorkerVersion(fetchImpl = fetch) {
-  const rawUrl = buildGitHubRepositoryRawUrl(
-    GITHUB_REPOSITORY_VERSION_PATH,
-    GITHUB_REPOSITORY_URL,
-    GITHUB_REPOSITORY_BRANCH
-  );
-  if (!rawUrl) {
-    throw new Error("仓库地址配置无效");
-  }
-  const response = await fetchImpl(rawUrl, {
-    method: "GET",
-    headers: {
-      Accept: "application/javascript, text/plain;q=0.9, */*;q=0.1",
-      "Cache-Control": "no-cache"
-    }
-  });
-  if (!response.ok) {
-    throw new Error(`GitHub 返回异常状态 ${response.status}`);
-  }
-  const manifest = normalizeVersionManifestRecord(await response.json());
-  const remoteVersion = manifest.version;
-  if (!remoteVersion) {
-    throw new Error("未能解析仓库 version.json 版本");
-  }
-  return {
-    remoteVersion,
-    rawUrl
-  };
-}
-async function compareRepositoryWorkerVersion({
-  fetchImpl = fetch,
-  now = /* @__PURE__ */ new Date()
-} = {}) {
-  const checkedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
-  try {
-    const { remoteVersion } = await fetchRemoteWorkerVersion(fetchImpl);
-    const comparison = compareVersions(WORKER_VERSION, remoteVersion);
-    return normalizeVersionStatusRecord({
-      currentVersion: WORKER_VERSION,
-      remoteVersion,
-      status: comparison < 0 ? "update-available" : "equal",
-      checkedAt,
-      error: ""
-    });
-  } catch (error) {
-    return normalizeVersionStatusRecord({
-      currentVersion: WORKER_VERSION,
-      remoteVersion: "",
-      status: "error",
-      checkedAt,
-      error: error?.message || "版本检查失败"
-    });
-  }
-}
-async function runScheduledVersionCheck(env, options = {}) {
-  const result = await compareRepositoryWorkerVersion(options);
-  await writeStoredVersionStatus(env, result);
-  return result;
-}
-
 // src/app/worker-routes.js
 function decodePathSegments(pathname = "/") {
   return String(pathname || "/").split("/").filter(Boolean).map((segment) => {
@@ -10488,20 +10508,11 @@ async function handleWorkerRequest(request, env, ctx) {
   }
   return new Response("Not Found", { status: 404 });
 }
-async function handleWorkerScheduled(controller, env, ctx) {
-  const now = controller?.scheduledTime ? new Date(controller.scheduledTime) : /* @__PURE__ */ new Date();
-  const task = runScheduledVersionCheck(env, { now });
-  ctx?.waitUntil?.(task);
-  return task;
-}
 
 // src/worker-entry.js
 var worker_entry_default = {
   async fetch(request, env, ctx) {
     return handleWorkerRequest(request, env, ctx);
-  },
-  async scheduled(controller, env, ctx) {
-    return handleWorkerScheduled(controller, env, ctx);
   }
 };
 export {

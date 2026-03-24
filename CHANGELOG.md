@@ -21,7 +21,7 @@
 ### Highlights
 
 - **版本信息正式进入后台菜单**：右上角菜单现在会显示当前版本，并支持点击跳转 GitHub 仓库主页。
-- **版本比较改为读取 `version.json`**：Worker 内置版本常量与定时检查逻辑现在固定读取仓库里的 `version.json`，远端较新时会展示具体新版本号。
+- **版本比较改为读取 `version.json`**：Worker 内置版本常量现在固定读取仓库里的 `version.json`，后台菜单按懒检查策略刷新远端版本，发现较新版本时会展示具体新版本号。
 - **真实客户端 IP 透传改成站点级三态控制**：高级设置现在支持 `默认透传 / 仅X-Real-IP / 关闭透传` 三种模式，按站点决定是否回源 `X-Real-IP / X-Forwarded-For`。
 - **GitHub 仓库发布口径继续收紧**：根目录 `worker-vx.x.x.js` 不再作为 GitHub 交付物提交；版本对比读取 `version.json`，正式部署仍以 `dist/worker.js` 为准。
 
@@ -35,7 +35,7 @@
 ### Docs
 
 - README 升级到 `v2.4.10`，同步更新部署说明、版本对比口径和 GitHub 仓库发布说明。
-- 补充 `v2.4.10` 发布记录，明确记录“版本检查读取 `version.json`，部署产物使用 `dist/worker.js`”的当前策略。
+- 补充 `v2.4.10` 发布记录，明确记录“版本检查读取 `version.json`、后台按懒检查刷新版本状态、部署产物使用 `dist/worker.js`”的当前策略。
 
 ---
 
